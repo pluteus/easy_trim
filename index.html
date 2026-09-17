@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d0d0f">
+<title>Dot Crop</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<style>
+  :root{
+    --bg:#0d0d0f;
+    --panel:#161619;
+    --panel-2:#1f1f23;
+    --line:#2c2c31;
+    --text:#eceae6;
+    --text-dim:#8c8a86;
+    --accent:#e8c168;
+    --accent-dim:#4a4232;
+    --danger:#d9704f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    overflow:hidden; background:var(--bg); color:var(--text);
+    font-family:-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    overscroll-behavior:none;
+  }
+  #canvas{
+    position:fixed; inset:0; display:block;
+    touch-action:none; background:var(--bg);
+  }
+
+  /* ---- top chrome ---- */
+  .corner-btn{
+    position:fixed; top:14px; width:44px; height:44px; border-radius:12px;
+    background:rgba(22,22,25,0.86); border:1px solid var(--line);
+    backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--text); z-index:40; cursor:pointer;
+  }
+  .corner-btn svg{width:20px; height:20px;}
+  #fileBtn{left:14px;}
+  #settingsBtn{right:14px;}
+  .corner-btn:active{background:var(--panel-2);}
+
+  /* ---- file dropdown ---- */
+  #fileMenu{
+    position:fixed; top:64px; left:14px; z-index:41;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    overflow:hidden; min-width:150px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.45);
+    display:none; flex-direction:column;
+  }
+  #fileMenu.open{display:flex;}
+  #fileMenu button{
+    all:unset; padding:13px 16px; font-size:15px; color:var(--text);
+    cursor:pointer; display:flex; align-items:center; gap:10px;
+  }
+  #fileMenu button:active{background:var(--panel-2);}
+  #fileMenu button + button{border-top:1px solid var(--line);}
+  #fileMenu button[disabled]{color:var(--text-dim); pointer-events:none;}
+
+  /* ---- settings panel ---- */
+  #settingsPanel{
+    position:fixed; top:0; right:0; bottom:0; width:min(340px, 88vw);
+    background:var(--panel); border-left:1px solid var(--line);
+    z-index:41; transform:translateX(100%); transition:transform .22s ease;
+    display:flex; flex-direction:column; padding:22px 18px;
+    padding-top:calc(22px + env(safe-area-inset-top));
+    padding-bottom:calc(22px + env(safe-area-inset-bottom));
+    overflow-y:auto;
+  }
+  #settingsPanel.open{transform:translateX(0);}
+  #settingsPanel h2{
+    font-size:13px; font-weight:600; letter-spacing:.02em; color:var(--text-dim);
+    margin:22px 0 10px; text-transform:none;
+  }
+  #settingsPanel h2:first-of-type{margin-top:4px;}
+  .close-row{display:flex; justify-content:flex-end;}
+  .close-row button{
+    all:unset; width:32px; height:32px; border-radius:8px; color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .close-row button:active{background:var(--panel-2);}
+
+  .ratio-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .ratio-btn{
+    all:unset; box-sizing:border-box; padding:10px 4px; text-align:center;
+    border:1px solid var(--line); border-radius:10px; font-size:13px;
+    color:var(--text-dim); cursor:pointer;
+  }
+  .ratio-btn .shape{
+    display:block; margin:0 auto 6px; border:1.5px solid currentColor; border-radius:2px;
+  }
+  .ratio-btn.active{border-color:var(--accent); color:var(--accent); background:var(--accent-dim);}
+
+  .field-row{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
+  .field-row label{flex:0 0 64px; font-size:13px; color:var(--text-dim);}
+  .field-row input[type="number"]{
+    flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:8px; color:var(--text); font-size:15px; padding:9px 10px;
+  }
+  .field-row span.unit{font-size:13px; color:var(--text-dim); flex:0 0 auto;}
+  .mode-toggle{display:flex; gap:8px; margin-bottom:14px;}
+  .mode-toggle button{
+    all:unset; box-sizing:border-box; flex:1; text-align:center; padding:9px 4px;
+    border:1px solid var(--line); border-radius:9px; font-size:13px; color:var(--text-dim); cursor:pointer;
+  }
+  .mode-toggle button.active{border-color:var(--accent); background:var(--accent-dim); color:var(--accent);}
+
+  .fmt-row{display:flex; gap:8px;}
+  .fmt-row button{
+    all:unset; flex:1; text-align:center; padding:10px 4px; border:1px solid var(--line);
+    border-radius:10px; font-size:13px; color:var(--text-dim); cursor:pointer;
+  }
+  .fmt-row button.active{border-color:var(--accent); color:var(--accent); background:var(--accent-dim);}
+
+  .quality-row{display:none; align-items:center; gap:10px; margin-top:10px;}
+  .quality-row.show{display:flex;}
+  .quality-row input[type=range]{flex:1;}
+  .quality-row span{font-size:12px; color:var(--text-dim); width:32px; text-align:right;}
+
+  .out-size{font-size:12px; color:var(--text-dim); margin-top:2px;}
+
+  #applyBtn{
+    all:unset; margin-top:auto; text-align:center; padding:13px; border-radius:11px;
+    background:var(--accent); color:#20180a; font-weight:600; font-size:15px; cursor:pointer;
+  }
+  #applyBtn:active{opacity:.85;}
+
+  #hint{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+    background:rgba(22,22,25,0.86); border:1px solid var(--line); backdrop-filter:blur(6px);
+    color:var(--text-dim); font-size:12.5px; padding:9px 16px; border-radius:100px;
+    z-index:39; pointer-events:none; white-space:nowrap; transition:opacity .3s;
+  }
+
+  #toast{
+    position:fixed; left:50%; top:22px; transform:translateX(-50%) translateY(-140%);
+    background:var(--panel); border:1px solid var(--line); color:var(--text);
+    font-size:13.5px; padding:11px 18px; border-radius:11px; z-index:60;
+    transition:transform .25s ease; box-shadow:0 10px 30px rgba(0,0,0,.4);
+  }
+  #toast.show{transform:translateX(-50%) translateY(0);}
+
+  #scrim{position:fixed; inset:0; z-index:38; display:none;}
+  #scrim.open{display:block;}
+
+  #fileInput{display:none;}
+
+  /* ---- right-click context menu ---- */
+  .ctx-menu{
+    position:fixed; z-index:70; background:var(--panel); border:1px solid var(--line);
+    border-radius:11px; overflow:hidden; min-width:172px; display:none; flex-direction:column;
+    box-shadow:0 10px 30px rgba(0,0,0,0.45);
+  }
+  .ctx-menu.open{display:flex;}
+  .ctx-menu button{
+    all:unset; padding:12px 16px; font-size:14px; color:var(--text);
+    cursor:pointer; display:flex; align-items:center; gap:9px;
+  }
+  .ctx-menu button:active{background:var(--panel-2);}
+  .ctx-menu button + button{border-top:1px solid var(--line);}
+  .ctx-menu button svg{width:15px; height:15px; flex:0 0 auto; color:var(--text-dim);}
+  .ctx-menu .ctx-label{
+    padding:9px 16px 4px; font-size:11px; color:var(--text-dim); letter-spacing:.02em;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div id="hint">画像を読み込んでください</div>
+
+<button id="fileBtn" class="corner-btn" aria-label="ファイル">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h4l2 2.2h8A1.5 1.5 0 0 1 21 7.7v10.8A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5v-13"/></svg>
+</button>
+<div id="fileMenu">
+  <button id="loadItem">画像を読み込み</button>
+  <button id="saveItem" disabled>トリミングして保存</button>
+</div>
+
+<button id="settingsBtn" class="corner-btn" aria-label="設定">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.8-1.4-1.8-3.1-2.2.6a7 7 0 0 0-1.3-.75L15.5 5h-3.6l-.4 2.35c-.47.18-.9.43-1.3.75l-2.2-.6-1.8 3.1 1.8 1.4a5.6 5.6 0 0 0 0 1.5l-1.8 1.4 1.8 3.1 2.2-.6c.4.32.83.57 1.3.75l.4 2.35h3.6l.4-2.35c.47-.18.9-.43 1.3-.75l2.2.6 1.8-3.1-1.8-1.4Z"/></svg>
+</button>
+
+<div id="scrim"></div>
+
+<div id="settingsPanel">
+  <div class="close-row">
+    <button id="closeSettings" aria-label="閉じる">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+
+  <h2>アスペクト比</h2>
+  <div class="ratio-grid" id="ratioGrid">
+    <button class="ratio-btn" data-w="1" data-h="1"><span class="shape" style="width:20px;height:20px;"></span>1:1</button>
+    <button class="ratio-btn" data-w="3" data-h="4"><span class="shape" style="width:16.5px;height:22px;"></span>3:4</button>
+    <button class="ratio-btn" data-w="4" data-h="3"><span class="shape" style="width:22px;height:16.5px;"></span>4:3</button>
+    <button class="ratio-btn" data-w="9" data-h="16"><span class="shape" style="width:13px;height:22px;"></span>9:16</button>
+    <button class="ratio-btn" data-w="16" data-h="9"><span class="shape" style="width:22px;height:12.4px;"></span>16:9</button>
+    <button class="ratio-btn" data-w="0" data-h="0">自由</button>
+  </div>
+
+  <h2>サイズ</h2>
+  <div class="mode-toggle" id="sizeModeToggle">
+    <button class="active" data-mode="mp">メガピクセル</button>
+    <button data-mode="px">縦横 px</button>
+  </div>
+  <div class="field-row" id="mpRow">
+    <label for="mpInput">MP</label>
+    <input type="number" id="mpInput" step="0.1" min="0.01" value="2.0">
+    <span class="unit">MP</span>
+  </div>
+  <div class="field-row" id="wRow" style="display:none;">
+    <label for="wInput">横 (W)</label>
+    <input type="number" id="wInput" step="1" min="1" value="1414">
+    <span class="unit">px</span>
+  </div>
+  <div class="field-row" id="hRow" style="display:none;">
+    <label for="hInput">縦 (H)</label>
+    <input type="number" id="hInput" step="1" min="1" value="1414">
+    <span class="unit">px</span>
+  </div>
+  <div class="out-size" id="outSizeLabel">出力: 1414 × 1414 px</div>
+
+  <h2>保存形式</h2>
+  <div class="fmt-row" id="fmtRow">
+    <button class="active" data-fmt="png">PNG</button>
+    <button data-fmt="webp">WebP</button>
+    <button data-fmt="jpeg">JPEG</button>
+  </div>
+  <div class="quality-row" id="qualityRow">
+    <label for="qualityInput" style="font-size:12px;color:var(--text-dim);">画質</label>
+    <input type="range" id="qualityInput" min="0.4" max="1" step="0.05" value="0.92">
+    <span id="qualityLabel">92%</span>
+  </div>
+
+  <button id="applyBtn">この枠を適用</button>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="fileInput" accept="image/*">
+
+<div id="ctxMenu" class="ctx-menu">
+  <div class="ctx-label" id="ctxLabel">回転</div>
+  <button data-action="rotate-right">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 8a8 8 0 1 0 1.2 6.3"/><path d="M21 4v5h-5"/></svg>
+    右へ90°回転
+  </button>
+  <button data-action="rotate-left">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8a8 8 0 1 1-1.2 6.3"/><path d="M3 4v5h5"/></svg>
+    左へ90°回転
+  </button>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------------- state ----------------
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  let img = null;              // HTMLImageElement (original, full-resolution source)
+  let hasImage = false;
+  let transform = new DOMMatrix();   // VIEW transform: image-space -> canvas-space (pan/zoom/rotate for display only)
+
+  // The crop selection is stored in IMAGE-SPACE (original image pixel coordinates),
+  // never in screen coordinates. Panning/zooming/rotating the view therefore never
+  // changes what is selected -- only how it currently looks on screen. On-screen
+  // position/size is derived every frame from cropImg + transform.
+  let cropImg = null;          // {x,y,w,h} in original image pixels, null until size applied
+  let aspectW = 1, aspectH = 1;      // 0/0 => free
+  let sizeMode = 'mp';
+  let mpValue = 2.0;
+  let pxW = 1414, pxH = 1414;  // final output pixel size (also used as the default selection size)
+  let format = 'png';
+  let quality = 0.92;
+
+  const hint = document.getElementById('hint');
+
+  function setHint(msg, autoHideIfImage){
+    hint.textContent = msg;
+    hint.style.opacity = '1';
+    if(autoHideIfImage){
+      clearTimeout(setHint._t);
+      setHint._t = setTimeout(()=>{ hint.style.opacity='0'; }, 2200);
+    }
+  }
+
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(()=>t.classList.remove('show'), 1900);
+  }
+
+  // ---------------- canvas sizing ----------------
+  function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    render();
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  // ---------------- image-space <-> screen-space helpers ----------------
+  // Point transform (image-space point -> current on-screen point).
+  function imgToScreenPoint(p){ return transform.transformPoint(p); }
+
+  // Inverse point transform (screen-space point -> image-space point).
+  function screenToImgPoint(p){ return transform.inverse().transformPoint(p); }
+
+  // Inverse VECTOR transform (screen-space delta -> image-space delta).
+  // Translation cancels out; only scale+rotation apply.
+  function screenToImgVector(dx, dy){
+    const inv = transform.inverse();
+    const p0 = inv.transformPoint({x:0, y:0});
+    const p1 = inv.transformPoint({x:dx, y:dy});
+    return { x: p1.x - p0.x, y: p1.y - p0.y };
+  }
+
+  // The four corners of cropImg, in both image-space and their current screen projection.
+  function projectCropCorners(){
+    const c = cropImg;
+    const imgC = {
+      tl: {x:c.x,       y:c.y},
+      tr: {x:c.x+c.w,   y:c.y},
+      bl: {x:c.x,       y:c.y+c.h},
+      br: {x:c.x+c.w,   y:c.y+c.h},
+    };
+    const screenC = {};
+    for(const k in imgC) screenC[k] = imgToScreenPoint(imgC[k]);
+    return { img: imgC, screen: screenC };
+  }
+
+  // Axis-aligned on-screen bounding box of cropImg under the current view transform.
+  // Valid because the view only ever rotates in exact 90-degree steps, so an
+  // axis-aligned image-space rectangle always maps to an axis-aligned screen rectangle.
+  function cropScreenBounds(){
+    const { screen } = projectCropCorners();
+    const xs = [screen.tl.x, screen.tr.x, screen.bl.x, screen.br.x];
+    const ys = [screen.tl.y, screen.tr.y, screen.bl.y, screen.br.y];
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    return { x:minX, y:minY, w:maxX-minX, h:maxY-minY };
+  }
+
+  function normalizeDeg(deg){
+    let a = deg % 360;
+    if(a < 0) a += 360;
+    return a;
+  }
+
+  // Current view rotation, snapped to the nearest 0/90/180/270 (it always is one,
+  // since rotation is only ever applied in exact 90-degree twist steps).
+  function viewRotationSteps(){
+    const deg = normalizeDeg(Math.atan2(transform.b, transform.a) * 180 / Math.PI);
+    return Math.round(deg / 90) % 4;
+  }
+
+  // ---------------- rendering ----------------
+  function drawScene(targetCtx, withOverlay){
+    targetCtx.save();
+    targetCtx.setTransform(1,0,0,1,0,0);
+    targetCtx.clearRect(0,0,canvas.width,canvas.height);
+    targetCtx.fillStyle = '#0d0d0f';
+    targetCtx.fillRect(0,0,canvas.width,canvas.height);
+    targetCtx.restore();
+
+    if(hasImage){
+      targetCtx.save();
+      targetCtx.setTransform(transform.a, transform.b, transform.c, transform.d, transform.e, transform.f);
+      targetCtx.imageSmoothingEnabled = true;
+      targetCtx.drawImage(img, 0, 0);
+      targetCtx.restore();
+    }
+
+    if(withOverlay && cropImg){
+      const b = cropScreenBounds();
+      targetCtx.save();
+      targetCtx.setTransform(1,0,0,1,0,0);
+      targetCtx.globalCompositeOperation = 'difference';
+      targetCtx.strokeStyle = '#ffffff';
+      targetCtx.lineWidth = 1;
+      targetCtx.strokeRect(Math.round(b.x)+0.5, Math.round(b.y)+0.5, Math.round(b.w)-1, Math.round(b.h)-1);
+      targetCtx.restore();
+    }
+  }
+
+  function render(){
+    drawScene(ctx, true);
+  }
+
+  // ---------------- file load ----------------
+  const fileInput = document.getElementById('fileInput');
+  document.getElementById('loadItem').addEventListener('click', ()=>{
+    fileInput.value = '';
+    fileInput.click();
+    closeFileMenu();
+  });
+
+  fileInput.addEventListener('change', (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    const url = URL.createObjectURL(f);
+    const im = new Image();
+    im.onload = ()=>{
+      img = im;
+      hasImage = true;
+      transform = new DOMMatrix(); // identity: top-left aligned, dot by dot
+      cropImg = null;
+      document.getElementById('saveItem').disabled = true;
+      resizeCanvas();
+      setHint('右上の設定でトリミング枠を作成してください', false);
+      URL.revokeObjectURL(url);
+    };
+    im.onerror = ()=>{ toast('画像を読み込めませんでした'); };
+    im.src = url;
+  });
+
+  // ---------------- top-left file menu ----------------
+  const fileBtn = document.getElementById('fileBtn');
+  const fileMenu = document.getElementById('fileMenu');
+  function openFileMenu(){ fileMenu.classList.add('open'); }
+  function closeFileMenu(){ fileMenu.classList.remove('open'); }
+  fileBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    closeSettingsPanel();
+    fileMenu.classList.contains('open') ? closeFileMenu() : openFileMenu();
+  });
+  document.addEventListener('click', (e)=>{
+    if(!fileMenu.contains(e.target) && e.target !== fileBtn) closeFileMenu();
+  });
+
+  document.getElementById('saveItem').addEventListener('click', ()=>{
+    closeFileMenu();
+    doSave();
+  });
+
+  // ---------------- settings panel ----------------
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const scrim = document.getElementById('scrim');
+
+  function openSettingsPanel(){
+    settingsPanel.classList.add('open');
+    scrim.classList.add('open');
+  }
+  function closeSettingsPanel(){
+    settingsPanel.classList.remove('open');
+    scrim.classList.remove('open');
+  }
+  settingsBtn.addEventListener('click', ()=>{
+    closeFileMenu();
+    settingsPanel.classList.contains('open') ? closeSettingsPanel() : openSettingsPanel();
+  });
+  scrim.addEventListener('click', closeSettingsPanel);
+  document.getElementById('closeSettings').addEventListener('click', closeSettingsPanel);
+
+  // aspect ratio buttons
+  const ratioButtons = Array.from(document.querySelectorAll('.ratio-btn'));
+  ratioButtons[0].classList.add('active');
+  ratioButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      ratioButtons.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      aspectW = parseFloat(btn.dataset.w);
+      aspectH = parseFloat(btn.dataset.h);
+      recomputeFromMode('ratio');
+    });
+  });
+
+  // size mode toggle
+  const sizeModeToggle = document.getElementById('sizeModeToggle');
+  const modeButtons = Array.from(document.querySelectorAll('#sizeModeToggle button'));
+  const mpRow = document.getElementById('mpRow');
+  const wRow = document.getElementById('wRow');
+  const hRow = document.getElementById('hRow');
+
+  // Some WebKit versions fail to repaint elements inside the settings
+  // panel's translateX()-transformed container when only a class/display
+  // changes with no layout change -- a plain reflow (offsetHeight) isn't
+  // always enough. Briefly toggling display off/on forces a real repaint
+  // (here: the メガピクセル/縦横px toggle buttons, which otherwise can
+  // render as a blank/collapsed pill after switching modes).
+  function forceRepaint(el){
+    const prevDisplay = el.style.display;
+    el.style.display = 'none';
+    void el.offsetHeight;
+    el.style.display = prevDisplay;
+  }
+
+  modeButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      modeButtons.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      sizeMode = btn.dataset.mode;
+      mpRow.style.display = sizeMode === 'mp' ? 'flex' : 'none';
+      wRow.style.display = sizeMode === 'px' ? 'flex' : 'none';
+      hRow.style.display = sizeMode === 'px' ? 'flex' : 'none';
+      void settingsPanel.offsetHeight;
+      forceRepaint(sizeModeToggle);
+      updateOutSizeLabel();
+    });
+  });
+
+  const mpInput = document.getElementById('mpInput');
+  const wInput = document.getElementById('wInput');
+  const hInput = document.getElementById('hInput');
+
+  mpInput.addEventListener('input', ()=>{
+    mpValue = parseFloat(mpInput.value) || 0.01;
+    recomputeFromMode('mp');
+  });
+  wInput.addEventListener('input', ()=>{
+    pxW = Math.max(1, Math.round(parseFloat(wInput.value) || 1));
+    recomputeFromMode('w');
+  });
+  hInput.addEventListener('input', ()=>{
+    pxH = Math.max(1, Math.round(parseFloat(hInput.value) || 1));
+    recomputeFromMode('h');
+  });
+
+  function recomputeFromMode(source){
+    const ratio = (aspectW > 0 && aspectH > 0) ? aspectW / aspectH : (pxW / pxH);
+    if(source === 'ratio' || source === 'mp'){
+      if(sizeMode === 'mp'){
+        const total = mpValue * 1000000;
+        const w = Math.round(Math.sqrt(total * ratio));
+        const h = Math.round(w / ratio);
+        pxW = Math.max(1,w); pxH = Math.max(1,h);
+      } else {
+        // ratio button pressed while in px mode: keep width, recompute height
+        pxH = Math.max(1, Math.round(pxW / ratio));
+        wInput.value = pxW; hInput.value = pxH;
+      }
+    } else if(source === 'w'){
+      if(aspectW > 0 && aspectH > 0) pxH = Math.max(1, Math.round(pxW / ratio));
+      hInput.value = pxH;
+    } else if(source === 'h'){
+      if(aspectW > 0 && aspectH > 0) pxW = Math.max(1, Math.round(pxH * ratio));
+      wInput.value = pxW;
+    }
+    wInput.value = pxW; hInput.value = pxH;
+    updateOutSizeLabel();
+  }
+
+  function updateOutSizeLabel(){
+    document.getElementById('outSizeLabel').textContent = `出力: ${pxW} × ${pxH} px`;
+  }
+  recomputeFromMode('mp');
+
+  // Keep the settings panel's size fields in sync whenever the crop
+  // rectangle itself is changed directly on the canvas (corner-drag resize,
+  // or a two-finger rotate that swaps its width/height). This does NOT fire
+  // for a plain move (dragging the rect around), since that doesn't change
+  // its size.
+  function syncSizeFieldsFromCrop(){
+    if(!cropImg) return;
+    pxW = Math.max(1, Math.round(cropImg.w));
+    pxH = Math.max(1, Math.round(cropImg.h));
+    wInput.value = pxW;
+    hInput.value = pxH;
+    mpValue = pxW * pxH / 1000000;
+    mpInput.value = mpValue.toFixed(2);
+    updateOutSizeLabel();
+  }
+
+  // format buttons
+  const fmtButtons = Array.from(document.querySelectorAll('#fmtRow button'));
+  const qualityRow = document.getElementById('qualityRow');
+  const qualityInput = document.getElementById('qualityInput');
+  const qualityLabel = document.getElementById('qualityLabel');
+  fmtButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      fmtButtons.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      format = btn.dataset.fmt;
+      qualityRow.classList.toggle('show', format !== 'png');
+    });
+  });
+  qualityInput.addEventListener('input', ()=>{
+    quality = parseFloat(qualityInput.value);
+    qualityLabel.textContent = Math.round(quality*100) + '%';
+  });
+
+  // apply crop size -- creates/resets the crop selection in IMAGE-SPACE,
+  // centered on whatever is currently at the middle of the view.
+  document.getElementById('applyBtn').addEventListener('click', ()=>{
+    if(!hasImage){
+      toast('先に画像を読み込んでください');
+      return;
+    }
+    const centerScreen = { x: canvas.width/2, y: canvas.height/2 };
+    const centerImg = screenToImgPoint(centerScreen);
+    cropImg = {
+      x: centerImg.x - pxW/2,
+      y: centerImg.y - pxH/2,
+      w: pxW,
+      h: pxH
+    };
+    document.getElementById('saveItem').disabled = false;
+    closeSettingsPanel();
+    setHint('内部をドラッグで移動 ・ 角をドラッグでリサイズ ・ 2本指ツイストで回転', true);
+    render();
+  });
+
+  // ---------------- gesture handling ----------------
+  const pointers = new Map(); // id -> {x,y}
+  let gesture = null;
+
+  const CORNER_HIT = 26;
+  const OPPOSITE = { tl:'br', tr:'bl', bl:'tr', br:'tl' };
+
+  function getPos(e){
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  // Returns {zone:'corner', key} | {zone:'body'} | {zone:'outside'}
+  function hitTestRect(p){
+    if(!cropImg) return { zone:'outside' };
+    const { screen } = projectCropCorners();
+    for(const k of ['tl','tr','bl','br']){
+      if(Math.hypot(p.x-screen[k].x, p.y-screen[k].y) <= CORNER_HIT) return { zone:'corner', key:k };
+    }
+    const xs = [screen.tl.x, screen.tr.x, screen.bl.x, screen.br.x];
+    const ys = [screen.tl.y, screen.tr.y, screen.bl.y, screen.br.y];
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    if(p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) return { zone:'body' };
+    return { zone:'outside' };
+  }
+
+  function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+  function angle(a,b){ return Math.atan2(b.y-a.y, b.x-a.x); }
+  function midpoint(a,b){ return {x:(a.x+b.x)/2, y:(a.y+b.y)/2}; }
+
+  function startSingleGesture(id){
+    const p = pointers.get(id);
+    if(!hasImage){ gesture = null; return; }
+    const hit = hitTestRect(p);
+    if(hit.zone === 'body'){
+      gesture = { type:'rect-move', ids:[id], last:p, ctx:'rect' };
+    } else if(hit.zone === 'corner'){
+      const { img: imgC } = projectCropCorners();
+      const anchorKey = OPPOSITE[hit.key];
+      gesture = {
+        type:'rect-resize', ids:[id], ctx:'rect',
+        anchor: { x: imgC[anchorKey].x, y: imgC[anchorKey].y },
+        ratio: cropImg.w / cropImg.h
+      };
+    } else {
+      gesture = { type:'pan', ids:[id], last:p, ctx:'canvas' };
+    }
+  }
+
+  function startDoubleGesture(context){
+    const ids = Array.from(pointers.keys());
+    const p1 = pointers.get(ids[0]), p2 = pointers.get(ids[1]);
+    if(context === 'rect'){
+      gesture = { type:'rect-rotate', ids, prevAngle: angle(p1,p2), accum:0, ctx:'rect' };
+    } else {
+      gesture = { type:'canvas-zoom-rotate', ids, prevDist: dist(p1,p2), prevAngle: angle(p1,p2), prevMid: midpoint(p1,p2), accum:0, ctx:'canvas' };
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e)=>{
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, getPos(e));
+    if(pointers.size === 1){
+      startSingleGesture(e.pointerId);
+    } else if(pointers.size === 2){
+      const ctxType = gesture ? gesture.ctx : 'canvas';
+      startDoubleGesture(ctxType);
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!pointers.has(e.pointerId)) return;
+    const prevPos = pointers.get(e.pointerId);
+    const newPos = getPos(e);
+    pointers.set(e.pointerId, newPos);
+    if(!gesture) return;
+
+    if(gesture.type === 'pan'){
+      // Pans the VIEW only. cropImg is untouched, so crop content never changes.
+      const dx = newPos.x - prevPos.x, dy = newPos.y - prevPos.y;
+      const T = new DOMMatrix().translate(dx, dy);
+      transform = T.multiply(transform);
+      render();
+
+    } else if(gesture.type === 'rect-move'){
+      // Moves the selection in IMAGE-SPACE, converting the screen drag via the
+      // current view transform so it still feels like dragging on screen.
+      const d = screenToImgVector(newPos.x - prevPos.x, newPos.y - prevPos.y);
+      cropImg.x += d.x; cropImg.y += d.y;
+      render();
+
+    } else if(gesture.type === 'rect-resize'){
+      const a = gesture.anchor;
+      const pImg = screenToImgPoint(newPos);
+      const dx = pImg.x - a.x, dy = pImg.y - a.y;
+      const ratio = gesture.ratio;
+      let w = Math.max(Math.abs(dx), Math.abs(dy)*ratio);
+      w = Math.max(20, w);
+      let h = w / ratio;
+      const signX = dx < 0 ? -1 : 1;
+      const signY = dy < 0 ? -1 : 1;
+      cropImg.x = signX < 0 ? a.x - w : a.x;
+      cropImg.y = signY < 0 ? a.y - h : a.y;
+      cropImg.w = w; cropImg.h = h;
+      syncSizeFieldsFromCrop();
+      render();
+
+    } else if(gesture.type === 'canvas-zoom-rotate'){
+      const ids = gesture.ids;
+      const p1 = pointers.get(ids[0]), p2 = pointers.get(ids[1]);
+      if(!p1 || !p2) return;
+      const d = dist(p1,p2);
+      const a = angle(p1,p2);
+      const mid = midpoint(p1,p2);
+
+      const scaleFactor = d / gesture.prevDist;
+      if(isFinite(scaleFactor) && scaleFactor > 0){
+        const S = new DOMMatrix()
+          .translate(mid.x, mid.y)
+          .scale(scaleFactor, scaleFactor)
+          .translate(-mid.x, -mid.y);
+        transform = S.multiply(transform);
+      }
+
+      let da = a - gesture.prevAngle;
+      while(da > Math.PI) da -= 2*Math.PI;
+      while(da < -Math.PI) da += 2*Math.PI;
+      gesture.accum += da;
+
+      const THRESH = Math.PI/4;
+      while(Math.abs(gesture.accum) >= THRESH){
+        const dir = gesture.accum > 0 ? 1 : -1;
+        const R = new DOMMatrix()
+          .translate(mid.x, mid.y)
+          .rotate(dir*90)
+          .translate(-mid.x, -mid.y);
+        transform = R.multiply(transform);
+        gesture.accum -= dir*(Math.PI/2);
+      }
+
+      gesture.prevDist = d;
+      gesture.prevAngle = a;
+      gesture.prevMid = mid;
+      render();
+
+    } else if(gesture.type === 'rect-rotate'){
+      // Swaps the selection's width/height around its own center (image-space).
+      const ids = gesture.ids;
+      const p1 = pointers.get(ids[0]), p2 = pointers.get(ids[1]);
+      if(!p1 || !p2) return;
+      const a = angle(p1,p2);
+      let da = a - gesture.prevAngle;
+      while(da > Math.PI) da -= 2*Math.PI;
+      while(da < -Math.PI) da += 2*Math.PI;
+      gesture.accum += da;
+      const THRESH = Math.PI/4;
+      while(Math.abs(gesture.accum) >= THRESH){
+        const dir = gesture.accum > 0 ? 1 : -1;
+        rotateCropRect();
+        gesture.accum -= dir*(Math.PI/2);
+      }
+      gesture.prevAngle = a;
+    }
+  });
+
+  function endPointer(e){
+    if(!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    if(pointers.size === 1){
+      const remainingId = Array.from(pointers.keys())[0];
+      startSingleGesture(remainingId);
+    } else {
+      gesture = null;
+    }
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', (e)=>{ if(e.pointerType !== 'touch') endPointer(e); });
+
+  // mouse wheel = extra convenience zoom on desktop (view only)
+  canvas.addEventListener('wheel', (e)=>{
+    if(!hasImage) return;
+    e.preventDefault();
+    const p = getPos(e);
+    const factor = e.deltaY < 0 ? 1.08 : 0.93;
+    const S = new DOMMatrix().translate(p.x,p.y).scale(factor,factor).translate(-p.x,-p.y);
+    transform = S.multiply(transform);
+    render();
+  }, {passive:false});
+
+  // ---------------- explicit 90-degree rotation (mouse-friendly) ----------------
+  // Rotates the crop selection itself (image-space), around its own center.
+  // A 90-degree turn of an axis-aligned rectangle looks the same whichever way
+  // you turn it, so "right" and "left" both call this -- it mirrors the
+  // two-finger twist gesture exactly.
+  function rotateCropRect(){
+    if(!cropImg) return;
+    const cx = cropImg.x + cropImg.w/2, cy = cropImg.y + cropImg.h/2;
+    const nw = cropImg.h, nh = cropImg.w;
+    cropImg.x = cx - nw/2; cropImg.y = cy - nh/2;
+    cropImg.w = nw; cropImg.h = nh;
+    syncSizeFieldsFromCrop();
+    render();
+  }
+
+  // Rotates the VIEW (pan/zoom/rotate transform) around the canvas center.
+  // cropImg is untouched, so -- just like panning and pinch-zoom -- this never
+  // changes what is selected, only how it currently looks on screen.
+  function rotateCanvasView(deg){
+    if(!hasImage) return;
+    const mid = { x: canvas.width/2, y: canvas.height/2 };
+    const R = new DOMMatrix().translate(mid.x, mid.y).rotate(deg).translate(-mid.x, -mid.y);
+    transform = R.multiply(transform);
+    render();
+  }
+
+  // ---------------- right-click context menu ----------------
+  const ctxMenu = document.getElementById('ctxMenu');
+  const ctxLabel = document.getElementById('ctxLabel');
+  let ctxZone = null; // 'rect' | 'canvas'
+
+  function closeContextMenu(){
+    ctxMenu.classList.remove('open');
+    ctxZone = null;
+  }
+
+  function openContextMenu(clientX, clientY, zone){
+    closeFileMenu();
+    closeSettingsPanel();
+    ctxZone = zone;
+    ctxLabel.textContent = zone === 'rect' ? 'トリミング枠を回転' : 'キャンバスを回転';
+    ctxMenu.classList.add('open');
+    // clamp inside the viewport
+    const r = ctxMenu.getBoundingClientRect();
+    const maxX = window.innerWidth - r.width - 8;
+    const maxY = window.innerHeight - r.height - 8;
+    ctxMenu.style.left = Math.max(8, Math.min(clientX, maxX)) + 'px';
+    ctxMenu.style.top = Math.max(8, Math.min(clientY, maxY)) + 'px';
+  }
+
+  canvas.addEventListener('contextmenu', (e)=>{
+    if(!hasImage) return; // nothing to rotate yet -- let the browser's default menu show
+    e.preventDefault();
+    const pos = getPos(e);
+    const hit = hitTestRect(pos);
+    const zone = (hit.zone === 'body' || hit.zone === 'corner') ? 'rect' : 'canvas';
+    openContextMenu(e.clientX, e.clientY, zone);
+  });
+
+  ctxMenu.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    const action = btn.dataset.action;
+    if(ctxZone === 'rect'){
+      rotateCropRect();
+    } else if(ctxZone === 'canvas'){
+      rotateCanvasView(action === 'rotate-right' ? 90 : -90);
+    }
+    closeContextMenu();
+  });
+
+  document.addEventListener('click', (e)=>{
+    if(ctxMenu.classList.contains('open') && !ctxMenu.contains(e.target)) closeContextMenu();
+  });
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeContextMenu(); });
+  window.addEventListener('blur', closeContextMenu);
+  canvas.addEventListener('pointerdown', ()=>{ if(ctxMenu.classList.contains('open')) closeContextMenu(); });
+
+  // ---------------- save ----------------
+  // Crops directly from the original image data -- never from a screen capture --
+  // so the result is unaffected by the current on-screen zoom level, and always
+  // comes out at exactly the configured output size.
+  function doSave(){
+    if(!hasImage || !cropImg){
+      toast('トリミング枠を設定してください');
+      return;
+    }
+
+    // 1) Pull the selected region straight out of the source image, at full quality.
+    const sw = Math.max(1, Math.round(cropImg.w));
+    const sh = Math.max(1, Math.round(cropImg.h));
+    const raw = document.createElement('canvas');
+    raw.width = sw; raw.height = sh;
+    const rawCtx = raw.getContext('2d');
+    rawCtx.imageSmoothingEnabled = true;
+    rawCtx.imageSmoothingQuality = 'high';
+    rawCtx.drawImage(img, cropImg.x, cropImg.y, cropImg.w, cropImg.h, 0, 0, sw, sh);
+
+    // 2) Re-apply whatever view rotation was in effect when the crop was framed,
+    //    so the saved result matches what was previewed on screen.
+    const steps = viewRotationSteps();
+    let oriented = raw;
+    if(steps !== 0){
+      const rc = document.createElement('canvas');
+      if(steps === 1 || steps === 3){ rc.width = sh; rc.height = sw; }
+      else { rc.width = sw; rc.height = sh; }
+      const rctx = rc.getContext('2d');
+      rctx.imageSmoothingEnabled = true;
+      rctx.imageSmoothingQuality = 'high';
+      rctx.translate(rc.width/2, rc.height/2);
+      rctx.rotate(steps * Math.PI/2);
+      rctx.drawImage(raw, -sw/2, -sh/2);
+      oriented = rc;
+    }
+
+    // 3) Resample to exactly the configured output size.
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = pxW; outCanvas.height = pxH;
+    const outCtx = outCanvas.getContext('2d');
+    outCtx.imageSmoothingEnabled = true;
+    outCtx.imageSmoothingQuality = 'high';
+    if(format !== 'png'){
+      outCtx.fillStyle = '#ffffff';
+      outCtx.fillRect(0,0,pxW,pxH);
+    }
+    outCtx.drawImage(oriented, 0, 0, oriented.width, oriented.height, 0, 0, pxW, pxH);
+
+    const mime = format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : 'image/jpeg';
+    const ext = format === 'jpeg' ? 'jpg' : format;
+    outCanvas.toBlob((blob)=>{
+      if(!blob){ toast('書き出しに失敗しました'); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `crop-${pxW}x${pxH}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 4000);
+      toast(`保存しました (${pxW}×${pxH})`);
+    }, mime, format === 'png' ? undefined : quality);
+  }
+
+  // ---------------- init ----------------
+  resizeCanvas();
+  setHint('左上のボタンから画像を読み込んでください', false);
+
+  // ---------------- offline / PWA ----------------
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('./sw.js').catch(()=>{ /* offline support unavailable */ });
+    });
+  }
+})();
+</script>
+</body>
+</html>
